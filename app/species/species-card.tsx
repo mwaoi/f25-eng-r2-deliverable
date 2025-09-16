@@ -1,33 +1,128 @@
 "use client";
-/*
-Note: "use client" is a Next.js App Router directive that tells React to render the component as
-a client component rather than a server component. This establishes the server-client boundary,
-providing access to client-side functionality such as hooks and event handlers to this component and
-any of its imported children. Although the SpeciesCard component itself does not use any client-side
-functionality, it is beneficial to move it to the client because it is rendered in a list with a unique
-key prop in species/page.tsx. When multiple component instances are rendered from a list, React uses the unique key prop
-on the client-side to correctly match component state and props should the order of the list ever change.
-React server components don't track state between rerenders, so leaving the uniquely identified components (e.g. SpeciesCard)
-can cause errors with matching props and state in child components if the list order changes.
-*/
-import { Button } from "@/components/ui/button";
-import type { Database } from "@/lib/schema";
-import Image from "next/image";
-type Species = Database["public"]["Tables"]["species"]["Row"];
 
-export default function SpeciesCard({ species }: { species: Species }) {
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogTrigger,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+  DialogClose,
+} from "@/components/ui/dialog";
+import { Separator } from "@/components/ui/separator";
+import Image from "next/image";
+import EditSpeciesDialog from "./edit-species-dialog";
+
+// Local minimal type (only fields we use)
+type Species = {
+  id: string | number;
+  scientific_name?: string | null;
+  common_name?: string | null;
+  total_population?: number | string | null;
+  kingdom?: string | null;
+  description?: string | null;
+  image?: string | null;
+  author?: string | null;       // UUID
+  authorName?: string | null;   // From profiles.display_name (page adds this)
+};
+
+export default function SpeciesCard({
+  species,
+  currentUserId,
+}: {
+  species: Species;
+  currentUserId?: string;
+}) {
+  // Prefer a real name; otherwise "You" if it's yours; otherwise hide author row
+  const authorLabel =
+    species.authorName && species.authorName.trim().length > 0
+      ? species.authorName
+      : species.author && currentUserId && species.author === currentUserId
+      ? "You"
+      : null;
+
+return (
+  <div className="m-4 w-72 min-w-72 flex-none rounded border-2 p-3 shadow">
+    {species.image && (
+      <div className="relative h-40 w-full">
+        <Image
+          src={species.image}
+          alt={species.scientific_name ?? species.common_name ?? "Species image"}
+          fill
+          style={{ objectFit: "cover" }}
+          sizes="288px"
+        />
+      </div>
+    )}
+
+    <h3 className="mt-3 text-2xl font-semibold">{species.scientific_name}</h3>
+    <h4 className="text-lg font-light italic">{species.common_name}</h4>
+    <p>{species.description ? truncate(species.description, 150) : ""}</p>
+
+    {/* Buttons row: Learn More + Edit (if owner) */}
+    <div className="mt-3 flex w-full gap-2">
+      {/* Learn More dialog */}
+      <Dialog>
+        <DialogTrigger asChild>
+          <Button className="flex-1">Learn More</Button>
+        </DialogTrigger>
+
+        <DialogContent aria-describedby={`species-desc-${species.id}`}>
+          <DialogHeader>
+            <DialogTitle>{species.scientific_name ?? "Species details"}</DialogTitle>
+            <DialogDescription id={`species-desc-${species.id}`}>
+              Detailed information about this species.
+            </DialogDescription>
+          </DialogHeader>
+
+          <Separator className="my-2" />
+
+          <div className="space-y-2 text-sm leading-relaxed">
+            <KV label="Scientific name" value={species.scientific_name} />
+            <KV label="Common name" value={species.common_name} />
+            <KV label="Total population" value={formatMaybeNumber(species.total_population)} />
+            <KV label="Kingdom" value={species.kingdom} />
+            {species.description && (
+              <div>
+                <span className="font-medium">Description:</span> {species.description}
+              </div>
+            )}
+            {authorLabel && <KV label="Author" value={authorLabel} />}
+          </div>
+
+          <DialogFooter>
+            <DialogClose asChild>
+              <Button variant="secondary">Close</Button>
+            </DialogClose>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit button/dialog – only shows if current user is the author (handled inside) */}
+      <EditSpeciesDialog species={species} currentUserId={currentUserId!} />
+    </div>
+  </div>
+);
+
+}
+
+function truncate(s: string, n: number) {
+  return s.length <= n ? s : s.slice(0, n).trim() + "…";
+}
+
+function formatMaybeNumber(v: unknown) {
+  if (typeof v === "number") return new Intl.NumberFormat().format(v);
+  if (typeof v === "string") return v;
+  return "—";
+}
+
+function KV({ label, value }: { label: string; value?: string | number | null }) {
   return (
-    <div className="m-4 w-72 min-w-72 flex-none rounded border-2 p-3 shadow">
-      {species.image && (
-        <div className="relative h-40 w-full">
-          <Image src={species.image} alt={species.scientific_name} fill style={{ objectFit: "cover" }} />
-        </div>
-      )}
-      <h3 className="mt-3 text-2xl font-semibold">{species.scientific_name}</h3>
-      <h4 className="text-lg font-light italic">{species.common_name}</h4>
-      <p>{species.description ? species.description.slice(0, 150).trim() + "..." : ""}</p>
-      {/* Replace the button with the detailed view dialog. */}
-      <Button className="mt-3 w-full">Learn More</Button>
+    <div>
+      <span className="font-medium">{label}:</span>{" "}
+      {value !== undefined && value !== null && String(value).length > 0 ? String(value) : "—"}
     </div>
   );
 }

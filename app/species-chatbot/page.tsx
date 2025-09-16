@@ -1,13 +1,26 @@
 /* eslint-disable */
 "use client";
+
 import { TypographyH2, TypographyP } from "@/components/ui/typography";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
+
+type ChatMsg = { role: "user" | "bot"; content: string };
 
 export default function SpeciesChatbot() {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
+
   const [message, setMessage] = useState("");
-  const [chatLog, setChatLog] = useState<{ role: "user" | "bot"; content: string }[]>([]);
+  const [chatLog, setChatLog] = useState<ChatMsg[]>([
+    {
+      role: "bot",
+      content:
+        "Hi! I’m your species chatbot. Ask about habitat, diet, conservation status, taxonomy, or other animal facts.",
+    },
+  ]);
+  const [pending, setPending] = useState(false);
+
   const handleInput = () => {
     const textarea = textareaRef.current;
     if (textarea) {
@@ -16,31 +29,65 @@ export default function SpeciesChatbot() {
     }
   };
 
-const handleSubmit = async () => {
-  // TODO: Implement this function
-}
+  useEffect(() => {
+    // auto-scroll to bottom when messages change
+    listRef.current?.scrollTo({ top: listRef.current.scrollHeight, behavior: "smooth" });
+  }, [chatLog]);
 
-return (
+  const handleSubmit = async () => {
+    const q = message.trim();
+    if (!q || pending) return;
+
+    // optimistic append
+    setChatLog((m) => [...m, { role: "user", content: q }]);
+    setMessage("");
+    setPending(true);
+
+    try {
+      const res = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: q }),
+      });
+
+      if (!res.ok) {
+        const errText =
+          res.status === 400
+            ? "Please enter a valid question about animals or species."
+            : "The species service is unavailable. Try again in a moment.";
+        setChatLog((m) => [...m, { role: "bot", content: errText }]);
+      } else {
+        const { response } = (await res.json()) as { response: string };
+        setChatLog((m) => [...m, { role: "bot", content: response }]);
+      }
+    } catch {
+      setChatLog((m) => [
+        ...m,
+        { role: "bot", content: "Network error. Please check your connection and try again." },
+      ]);
+    } finally {
+      setPending(false);
+    }
+  };
+
+  return (
     <>
       <TypographyH2>Species Chatbot</TypographyH2>
       <div className="mt-4 flex gap-4">
         <div className="mt-4 rounded-lg bg-foreground p-4 text-background">
           <TypographyP>
-            The Species Chatbot is a feature to be implemented that is specialized to answer questions about animals.
-            Ideally, it will be able to provide information on various species, including their habitat, diet,
-            conservation status, and other relevant details. Any unrelated prompts will return a message to the user
-            indicating that the chatbot is specialized for species-related queries only.
-          </TypographyP>
-          <TypographyP>
-            To use the Species Chatbot, simply type your question in the input field below and hit enter. The chatbot
-            will respond with the best available information.
+            The Species Chatbot answers questions about animals only (habitat, diet, conservation status, taxonomy,
+            behavior, etc.). It will politely refuse unrelated topics.
           </TypographyP>
         </div>
       </div>
-      {/* Chat UI, ChatBot to be implemented */}
+
       <div className="mx-auto mt-6">
         {/* Chat history */}
-        <div className="h-[400px] space-y-3 overflow-y-auto rounded-lg border border-border bg-muted p-4">
+        <div
+          ref={listRef}
+          className="h-[400px] space-y-3 overflow-y-auto rounded-lg border border-border bg-muted p-4"
+        >
           {chatLog.length === 0 ? (
             <p className="text-sm text-muted-foreground">Start chatting about a species!</p>
           ) : (
@@ -59,7 +106,8 @@ return (
             ))
           )}
         </div>
-        {/* Textarea and submission */}
+
+        {/* Input */}
         <div className="mt-4 flex flex-col items-end">
           <textarea
             ref={textareaRef}
@@ -68,14 +116,22 @@ return (
             onInput={handleInput}
             rows={1}
             placeholder="Ask about a species..."
-            className="w-full resize-none overflow-hidden rounded border border-border bg-background p-2 text-sm text-foreground focus:outline-none"
+            className="w-full resize-none overflow-hidden rounded border border-border bg-background p-2 text-sm text-foreground focus:outline-none disabled:opacity-60"
+            disabled={pending}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                void handleSubmit();
+              }
+            }}
           />
           <button
             type="button"
             onClick={() => void handleSubmit()}
-            className="mt-2 rounded bg-primary px-4 py-2 text-background transition hover:opacity-90"
+            disabled={pending || !message.trim()}
+            className="mt-2 rounded bg-primary px-4 py-2 text-background transition hover:opacity-90 disabled:opacity-60"
           >
-            Enter
+            {pending ? "Sending…" : "Enter"}
           </button>
         </div>
       </div>

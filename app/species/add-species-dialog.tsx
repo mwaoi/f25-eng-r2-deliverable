@@ -1,287 +1,350 @@
 "use client";
 
-import { Icons } from "@/components/icons";
+import * as React from "react";
+import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
-  DialogClose,
+  DialogTrigger,
   DialogContent,
-  DialogDescription,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
+  DialogDescription,
+  DialogFooter,
+  DialogClose,
 } from "@/components/ui/dialog";
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { toast } from "@/components/ui/use-toast";
-import { createBrowserSupabaseClient } from "@/lib/client-utils";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { useRouter } from "next/navigation";
-import { useState, type BaseSyntheticEvent } from "react";
-import { useForm } from "react-hook-form";
-import { z } from "zod";
+import { useToast } from "@/components/ui/use-toast";
+import { Plus } from "lucide-react";
 
-// We use zod (z) to define a schema for the "Add species" form.
-// zod handles validation of the input values with methods like .string(), .nullable(). It also processes the form inputs with .transform() before the inputs are sent to the database.
-
-// Define kingdom enum for use in Zod schema and displaying dropdown options in the form
-const kingdoms = z.enum(["Animalia", "Plantae", "Fungi", "Protista", "Archaea", "Bacteria"]);
-
-// Use Zod to define the shape + requirements of a Species entry; used in form validation
-const speciesSchema = z.object({
-  scientific_name: z
-    .string()
-    .trim()
-    .min(1)
-    .transform((val) => val?.trim()),
-  common_name: z
-    .string()
-    .nullable()
-    // Transform empty string or only whitespace input to null before form submission, and trim whitespace otherwise
-    .transform((val) => (!val || val.trim() === "" ? null : val.trim())),
-  kingdom: kingdoms,
-  total_population: z.number().int().positive().min(1).nullable(),
-  image: z
-    .string()
-    .url()
-    .nullable()
-    // Transform empty string or only whitespace input to null before form submission, and trim whitespace otherwise
-    .transform((val) => (!val || val.trim() === "" ? null : val.trim())),
-  description: z
-    .string()
-    .nullable()
-    // Transform empty string or only whitespace input to null before form submission, and trim whitespace otherwise
-    .transform((val) => (!val || val.trim() === "" ? null : val.trim())),
-});
-
-type FormData = z.infer<typeof speciesSchema>;
-
-// Default values for the form fields.
-/* Because the react-hook-form (RHF) used here is a controlled form (not an uncontrolled form),
-fields that are nullable/not required should explicitly be set to `null` by default.
-Otherwise, they will be `undefined` by default, which will raise warnings because `undefined` conflicts with controlled components.
-All form fields should be set to non-undefined default values.
-Read more here: https://legacy.react-hook-form.com/api/useform/
-*/
-const defaultValues: Partial<FormData> = {
-  scientific_name: "",
-  common_name: null,
-  kingdom: "Animalia",
-  total_population: null,
-  image: null,
-  description: null,
+type SpeciesInsert = {
+  scientific_name?: string | null;
+  common_name?: string | null;
+  total_population?: number | null;
+  kingdom?: string | null;
+  description?: string | null;
+  image?: string | null;
+  author: string;
 };
 
 export default function AddSpeciesDialog({ userId }: { userId: string }) {
+  const supabase = React.useMemo(() => createClientComponentClient(), []);
   const router = useRouter();
+  const { toast } = useToast();
 
-  // Control open/closed state of the dialog
-  const [open, setOpen] = useState<boolean>(false);
+  // form state
+  const [open, setOpen] = React.useState(false);
+  const [scientificName, setScientificName] = React.useState("");
+  const [commonName, setCommonName] = React.useState("");
+  const [totalPopulation, setTotalPopulation] = React.useState("");
+  const [kingdom, setKingdom] = React.useState("");
+  const [description, setDescription] = React.useState("");
+  const [image, setImage] = React.useState("");
 
-  // Instantiate form functionality with React Hook Form, passing in the Zod schema (for validation) and default values
-  const form = useForm<FormData>({
-    resolver: zodResolver(speciesSchema),
-    defaultValues,
-    mode: "onChange",
-  });
+  // wiki search state
+  const [query, setQuery] = React.useState("");
+  const [searching, setSearching] = React.useState(false);
+  const [saving, setSaving] = React.useState(false);
 
-  const onSubmit = async (input: FormData) => {
-    // The `input` prop contains data that has already been processed by zod. We can now use it in a supabase query
-    const supabase = createBrowserSupabaseClient();
-    const { error } = await supabase.from("species").insert([
-      {
-        author: userId,
-        common_name: input.common_name,
-        description: input.description,
-        kingdom: input.kingdom,
-        scientific_name: input.scientific_name,
-        total_population: input.total_population,
-        image: input.image,
-      },
-    ]);
+  function resetForm() {
+    setScientificName("");
+    setCommonName("");
+    setTotalPopulation("");
+    setKingdom("");
+    setDescription("");
+    setImage("");
+    setQuery("");
+  }
 
-    // Catch and report errors from Supabase and exit the onSubmit function with an early 'return' if an error occurred.
+  async function onSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setSaving(true);
+
+    const payload: SpeciesInsert = {
+      scientific_name: scientificName || null,
+      common_name: commonName || null,
+      total_population:
+        totalPopulation.trim() === "" ? null : Number.isNaN(Number(totalPopulation)) ? null : Number(totalPopulation),
+      kingdom: kingdom || null,
+      description: description || null,
+      image: image || null,
+      author: userId,
+    };
+
+    const { error } = await supabase.from("species").insert(payload);
+    setSaving(false);
+
     if (error) {
-      return toast({
-        title: "Something went wrong.",
-        description: error.message,
-        variant: "destructive",
-      });
+      toast({ title: "Failed to add species", description: error.message, variant: "destructive" });
+      return;
     }
 
-    // Because Supabase errors were caught above, the remainder of the function will only execute upon a successful edit
-
-    // Reset form values to the default (empty) values.
-    // Practically, this line can be removed because router.refresh() also resets the form. However, we left it as a reminder that you should generally consider form "cleanup" after an add/edit operation.
-    form.reset(defaultValues);
-
+    toast({ title: "Species added" });
     setOpen(false);
-
-    // Refresh all server components in the current route. This helps display the newly created species because species are fetched in a server component, species/page.tsx.
-    // Refreshing that server component will display the new species from Supabase
+    resetForm();
     router.refresh();
+  }
 
-    return toast({
-      title: "New species added!",
-      description: "Successfully added " + input.scientific_name + ".",
-    });
-  };
+  /**
+   * ---- Wikipedia + Wikidata Autofill ----
+   * 1) Wikipedia Search -> top title
+   * 2) Wikipedia REST Summary -> extract + main image + wikibase_item
+   * 3) Wikidata entity -> taxon name (P225) and parent-taxons to find Kingdom (rank 'kingdom')
+   * 4) Wikipedia parse wikitext -> try to extract population from infobox
+   */
+  async function autofillFromWikipedia() {
+    const q = (query || scientificName || commonName).trim();
+    if (!q) {
+      toast({ title: "Enter a name to search", description: "Try a scientific or common name." });
+      return;
+    }
+
+    setSearching(true);
+    try {
+      // 1) Search Wikipedia for best title
+      const searchUrl = `https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(
+        q
+      )}&format=json&origin=*`;
+      const searchRes = await fetch(searchUrl);
+      const searchJson = (await searchRes.json()) as any;
+      const top = searchJson?.query?.search?.[0];
+      if (!top?.title) {
+        toast({
+          title: "No Wikipedia match",
+          description: "Try a different spelling or a more specific name.",
+          variant: "destructive",
+        });
+        return;
+      }
+      const title: string = top.title;
+
+      // 2) Get summary (description + image + wikibase id)
+      const summaryUrl = `https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(title)}`;
+      const sumRes = await fetch(summaryUrl);
+      const sumJson = (await sumRes.json()) as any;
+
+      const extract: string | undefined = sumJson?.extract;
+      const thumb: string | undefined =
+        sumJson?.originalimage?.source || sumJson?.thumbnail?.source || undefined;
+      const wikibaseId: string | undefined = sumJson?.wikibase_item;
+
+      if (extract) setDescription(extract);
+      if (thumb) setImage(thumb);
+      if (!scientificName && !commonName) setCommonName(title);
+
+      // 3) From Wikidata, pull scientific name + kingdom (best effort)
+      if (wikibaseId) {
+        try {
+          const { sciName, kingdomName } = await getTaxonFromWikidata(wikibaseId);
+          if (sciName && !scientificName) setScientificName(sciName);
+          if (kingdomName && !kingdom) setKingdom(kingdomName);
+        } catch {
+          /* ignore wikidata failures, continue */
+        }
+      }
+
+      // 4) Try to grab population from the infobox wikitext
+      try {
+        const pop = await getPopulationFromInfobox(title);
+        if (pop && !totalPopulation) setTotalPopulation(pop);
+      } catch {
+        /* ignore */
+      }
+
+      toast({
+        title: "Autofilled from Wikipedia",
+        description: `Loaded summary${thumb ? " and image" : ""}${
+          wikibaseId ? ", plus scientific name/kingdom" : ""
+        }${totalPopulation ? ", and population" : ""} for “${title}”.`,
+      });
+    } catch (e) {
+      toast({
+        title: "Wikipedia request failed",
+        description: "Check your connection and try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setSearching(false);
+    }
+  }
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button variant="secondary">
-          <Icons.add className="mr-3 h-5 w-5" />
+        <Button size="sm" className="gap-2">
+          <Plus className="h-4 w-4" />
           Add Species
         </Button>
       </DialogTrigger>
-      <DialogContent className="max-h-screen overflow-y-auto sm:max-w-[600px]">
+
+      <DialogContent className="max-w-xl">
         <DialogHeader>
-          <DialogTitle>Add Species</DialogTitle>
-          <DialogDescription>
-            Add a new species here. Click &quot;Add Species&quot; below when you&apos;re done.
-          </DialogDescription>
+          <DialogTitle>Add a new species</DialogTitle>
+          <DialogDescription>Enter details below, or use Wikipedia to autofill description, image, and more.</DialogDescription>
         </DialogHeader>
-        <Form {...form}>
-          <form onSubmit={(e: BaseSyntheticEvent) => void form.handleSubmit(onSubmit)(e)}>
-            <div className="grid w-full items-center gap-4">
-              <FormField
-                control={form.control}
-                name="scientific_name"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Scientific Name</FormLabel>
-                    <FormControl>
-                      <Input placeholder="Cavia porcellus" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="common_name"
-                render={({ field }) => {
-                  // We must extract value from field and convert a potential defaultValue of `null` to "" because inputs can't handle null values: https://github.com/orgs/react-hook-form/discussions/4091
-                  const { value, ...rest } = field;
-                  return (
-                    <FormItem>
-                      <FormLabel>Common Name</FormLabel>
-                      <FormControl>
-                        <Input value={value ?? ""} placeholder="Guinea pig" {...rest} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  );
-                }}
-              />
-              <FormField
-                control={form.control}
-                name="kingdom"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Kingdom</FormLabel>
-                    <Select onValueChange={(value) => field.onChange(kingdoms.parse(value))} value={field.value}>
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select a kingdom" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        <SelectGroup>
-                          {kingdoms.options.map((kingdom, index) => (
-                            <SelectItem key={index} value={kingdom}>
-                              {kingdom}
-                            </SelectItem>
-                          ))}
-                        </SelectGroup>
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="total_population"
-                render={({ field }) => {
-                  const { value, ...rest } = field;
-                  return (
-                    <FormItem>
-                      <FormLabel>Total population</FormLabel>
-                      <FormControl>
-                        {/* Using shadcn/ui form with number: https://github.com/shadcn-ui/ui/issues/421 */}
-                        <Input
-                          type="number"
-                          value={value ?? ""}
-                          placeholder="300000"
-                          {...rest}
-                          onChange={(event) => field.onChange(+event.target.value)}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  );
-                }}
-              />
-              <FormField
-                control={form.control}
-                name="image"
-                render={({ field }) => {
-                  // We must extract value from field and convert a potential defaultValue of `null` to "" because inputs can't handle null values: https://github.com/orgs/react-hook-form/discussions/4091
-                  const { value, ...rest } = field;
-                  return (
-                    <FormItem>
-                      <FormLabel>Image URL</FormLabel>
-                      <FormControl>
-                        <Input
-                          value={value ?? ""}
-                          placeholder="https://upload.wikimedia.org/wikipedia/commons/thumb/3/30/George_the_amazing_guinea_pig.jpg/440px-George_the_amazing_guinea_pig.jpg"
-                          {...rest}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  );
-                }}
-              />
-              <FormField
-                control={form.control}
-                name="description"
-                render={({ field }) => {
-                  // We must extract value from field and convert a potential defaultValue of `null` to "" because textareas can't handle null values: https://github.com/orgs/react-hook-form/discussions/4091
-                  const { value, ...rest } = field;
-                  return (
-                    <FormItem>
-                      <FormLabel>Description</FormLabel>
-                      <FormControl>
-                        <Textarea
-                          value={value ?? ""}
-                          placeholder="The guinea pig or domestic guinea pig, also known as the cavy or domestic cavy, is a species of rodent belonging to the genus Cavia in the family Caviidae."
-                          {...rest}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  );
-                }}
-              />
-              <div className="flex">
-                <Button type="submit" className="ml-1 mr-1 flex-auto">
-                  Add Species
-                </Button>
-                <DialogClose asChild>
-                  <Button type="button" className="ml-1 mr-1 flex-auto" variant="secondary">
-                    Cancel
-                  </Button>
-                </DialogClose>
-              </div>
-            </div>
-          </form>
-        </Form>
+
+        {/* Wikipedia search bar */}
+        <div className="rounded-md border p-3">
+          <Label htmlFor="wiki_q" className="text-xs">Wikipedia autofill</Label>
+          <div className="mt-1 flex gap-2">
+            <Input
+              id="wiki_q"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="e.g., Panthera tigris or Tiger"
+            />
+            <Button type="button" onClick={autofillFromWikipedia} disabled={searching}>
+              {searching ? "Searching…" : "Autofill"}
+            </Button>
+          </div>
+          <p className="mt-1 text-xs text-muted-foreground">
+            We’ll search Wikipedia, copy the summary to Description, the main image to Image URL,
+            and (when available) the scientific name, kingdom, and a population estimate.
+          </p>
+        </div>
+
+        {/* Main form */}
+        <form onSubmit={onSubmit} className="space-y-3">
+          <div className="grid gap-2">
+            <Label htmlFor="scientific_name">Scientific name</Label>
+            <Input
+              id="scientific_name"
+              value={scientificName}
+              onChange={(e) => setScientificName(e.target.value)}
+              placeholder="e.g., Panthera tigris"
+              required
+            />
+          </div>
+
+          <div className="grid gap-2">
+            <Label htmlFor="common_name">Common name</Label>
+            <Input
+              id="common_name"
+              value={commonName}
+              onChange={(e) => setCommonName(e.target.value)}
+              placeholder="e.g., Tiger"
+              required
+            />
+          </div>
+
+          <div className="grid gap-2">
+            <Label htmlFor="total_population">Total population</Label>
+            <Input
+              id="total_population"
+              inputMode="numeric"
+              value={totalPopulation}
+              onChange={(e) => setTotalPopulation(e.target.value)}
+              placeholder="e.g., 3900"
+            />
+          </div>
+
+          <div className="grid gap-2">
+            <Label htmlFor="kingdom">Kingdom</Label>
+            <Input id="kingdom" value={kingdom} onChange={(e) => setKingdom(e.target.value)} placeholder="e.g., Animalia" />
+          </div>
+
+          <div className="grid gap-2">
+            <Label htmlFor="image">Image URL</Label>
+            <Input id="image" value={image} onChange={(e) => setImage(e.target.value)} placeholder="https://…" />
+          </div>
+
+          <div className="grid gap-2">
+            <Label htmlFor="description">Description</Label>
+            <Textarea
+              id="description"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              rows={6}
+              placeholder="Short summary of the species…"
+            />
+          </div>
+
+          <DialogFooter className="pt-2">
+            <DialogClose asChild>
+              <Button type="button" variant="ghost">Cancel</Button>
+            </DialogClose>
+            <Button type="submit" disabled={saving}>{saving ? "Adding…" : "Add species"}</Button>
+          </DialogFooter>
+        </form>
       </DialogContent>
     </Dialog>
   );
+}
+
+/* ----------------- Helpers (client-side) ----------------- */
+
+/** Fetch Wikidata entity JSON (labels, claims, etc.) */
+async function fetchEntity(qid: string): Promise<any> {
+  const url = `https://www.wikidata.org/wiki/Special:EntityData/${encodeURIComponent(qid)}.json?format=json&origin=*`;
+  const res = await fetch(url);
+  const json = (await res.json()) as any;
+  return json?.entities?.[qid];
+}
+
+/** Get scientific name (P225) and kingdom (by walking parent taxon chain until rank=='kingdom') */
+async function getTaxonFromWikidata(qid: string): Promise<{ sciName?: string; kingdomName?: string }> {
+  const entity = await fetchEntity(qid);
+  if (!entity) return {};
+
+  // P225: taxon name (scientific name)
+  const sciName =
+    entity?.claims?.P225?.[0]?.mainsnak?.datavalue?.value ??
+    entity?.labels?.en?.value; // fallback
+
+  // Walk parents (P171) until a node whose rank (P105) label is 'kingdom'
+  let kingdomName: string | undefined;
+  let parentQ = entity?.claims?.P171?.[0]?.mainsnak?.datavalue?.value?.id as string | undefined;
+
+  for (let i = 0; i < 10 && parentQ && !kingdomName; i++) {
+    const parent = await fetchEntity(parentQ);
+    if (!parent) break;
+
+    const rankQ: string | undefined = parent?.claims?.P105?.[0]?.mainsnak?.datavalue?.value?.id;
+    let rankLabel = "";
+    if (rankQ) {
+      const rankEntity = await fetchEntity(rankQ);
+      rankLabel = rankEntity?.labels?.en?.value?.toLowerCase?.() ?? "";
+    }
+    if (rankLabel === "kingdom") {
+      kingdomName = parent?.labels?.en?.value;
+      break;
+    }
+    parentQ = parent?.claims?.P171?.[0]?.mainsnak?.datavalue?.value?.id;
+  }
+
+  return { sciName, kingdomName };
+}
+
+/** Parse Wikipedia wikitext to extract a population-like number from the infobox (best effort). */
+async function getPopulationFromInfobox(title: string): Promise<string | undefined> {
+  const url = `https://en.wikipedia.org/w/api.php?action=parse&prop=wikitext&page=${encodeURIComponent(
+    title
+  )}&format=json&origin=*`;
+  const res = await fetch(url);
+  const json = (await res.json()) as any;
+  const wikitext: string | undefined = json?.parse?.wikitext?.["*"];
+  if (!wikitext) return undefined;
+
+  // Try common parameter names
+  const lines = wikitext.split("\n");
+  const candidate = lines.find((l) => /\|\s*(population|population_total|pop_estimate)\s*=/.test(l));
+  if (!candidate) return undefined;
+
+  // Strip templates and brackets, pull first large number
+  const cleaned = candidate
+    .replace(/\{\{[^}]+\}\}/g, " ")
+    .replace(/\[[^\]]+\]/g, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/\|\s*(population|population_total|pop_estimate)\s*=/i, " ")
+    .trim();
+
+  const numMatch = cleaned.match(/[\d][\d,\s\.]+/);
+  if (!numMatch) return undefined;
+
+  // Return digits only (keep commas)
+  const digits = numMatch[0].replace(/\s+/g, "");
+  return digits;
 }

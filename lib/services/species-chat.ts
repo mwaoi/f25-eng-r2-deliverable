@@ -28,7 +28,8 @@ export async function generateResponse(message: string): Promise<string> {
       throw new Error(`Upstream error ${res.status}: ${text}`);
     }
 
-    const json = await res.json();
+    // Cast to any so TS doesn’t complain about the JSON shape
+    const json = (await res.json()) as any;
     const content =
       json?.choices?.[0]?.message?.content ??
       "I couldn't find an answer. Try rephrasing your question about animals or species.";

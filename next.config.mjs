@@ -1,13 +1,10 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  eslint: { ignoreDuringBuilds: true }, // ✅ don’t fail builds on ESLint
-  // If you’re still tightening types, you can also bypass TS errors in CI:
-  // typescript: { ignoreBuildErrors:
-  images: {
-    remotePatterns: [
-      { protocol: "https", hostname: "upload.wikimedia.org" },
-      { protocol: "https", hostname: "images.unsplash.com" }, // only if you used Unsplash
-    ],
-  },
+  // 🟢 ship even if ESLint finds problems
+  eslint: { ignoreDuringBuilds: true },
+
+  // optional safety valve (use only if you still see TS errors blocking deploy)
+  // typescript: { ignoreBuildErrors: true },
 };
+
 export default nextConfig;

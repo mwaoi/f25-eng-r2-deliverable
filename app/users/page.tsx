@@ -1,6 +1,5 @@
 // app/users/page.tsx
 import { Separator } from "@/components/ui/separator";
-import { createServerSupabaseClient } from "@/lib/server-utils";
 import { redirect } from "next/navigation";
 
 export const revalidate = 0;

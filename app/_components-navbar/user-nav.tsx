@@ -12,13 +12,17 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { createBrowserSupabaseClient } from "@/lib/client-utils";
-import { type Database } from "@/lib/schema";
 import { LogOut, Settings, User } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
-type Profile = Database["public"]["Tables"]["profiles"]["Row"];
-
+interface Profile {
+  id: string;
+  email: string | null;
+  display_name: string | null;
+  avatar_url?: string | null;
+  biography?: string | null;
+}
 export default function UserNav({ profile }: { profile: Profile }) {
   // Create Supabase client (for client components)
   const supabaseClient = createBrowserSupabaseClient();

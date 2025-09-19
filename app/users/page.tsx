@@ -1,36 +1,36 @@
 // app/users/page.tsx
 import { Separator } from "@/components/ui/separator";
+
 import { redirect } from "next/navigation";
 
 export const revalidate = 0;
 
-// Type for exactly what we select from `profiles`
+// Exact type for rows returned from `profiles`
 interface Profile {
-  id: string; // your profiles.id is almost certainly uuid
+  id: string;
   email: string | null;
   display_name: string | null;
   biography: string | null;
 }
 
-// tiny helper to safely trim nullable strings
+// helper so we never call `.trim()` on null/undefined
 function trimOrEmpty(s: string | null | undefined) {
   return typeof s === "string" ? s.trim() : "";
 }
 
 export default async function UsersPage() {
   const supabase = createServerSupabaseClient();
-  const {
-    data: { session },
-  } = await supabase.auth.getSession();
 
+  const sessionRes = await supabase.auth.getSession();
+  const session = sessionRes.data.session;
   if (!session) redirect("/");
 
-  // Strongly type the result using `.returns<Profile[]>()`
+  // Strongly type the result to eliminate `any`
   const { data, error } = await supabase
     .from("profiles")
     .select("id, email, display_name, biography")
     .order("display_name", { ascending: true })
-    .returns<Profile[]>(); // <— types the `data` field
+    .returns<Profile[]>();
 
   if (error) {
     return (

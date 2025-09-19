@@ -1,36 +1,21 @@
-// app/users/page.tsx
 import { Separator } from "@/components/ui/separator";
-
+import { createServerSupabaseClient } from "@/lib/server-utils"; // ✅ add this
 import { redirect } from "next/navigation";
 
 export const revalidate = 0;
 
-// Exact type for rows returned from `profiles`
-interface Profile {
-  id: string;
-  email: string | null;
-  display_name: string | null;
-  biography: string | null;
-}
-
-// helper so we never call `.trim()` on null/undefined
-function trimOrEmpty(s: string | null | undefined) {
-  return typeof s === "string" ? s.trim() : "";
-}
-
 export default async function UsersPage() {
   const supabase = createServerSupabaseClient();
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
 
-  const sessionRes = await supabase.auth.getSession();
-  const session = sessionRes.data.session;
   if (!session) redirect("/");
 
-  // Strongly type the result to eliminate `any`
   const { data, error } = await supabase
     .from("profiles")
     .select("id, email, display_name, biography")
-    .order("display_name", { ascending: true })
-    .returns<Profile[]>();
+    .order("display_name", { ascending: true });
 
   if (error) {
     return (

@@ -40,7 +40,7 @@ export default function UserNav({ profile }: { profile: Profile }) {
         <Button variant="ghost" className="relative h-8 w-8 rounded-full">
           <Avatar className="h-8 w-8">
             {/* <AvatarImage src="/avatars/01.png" alt="@shadcn" /> */}
-            <AvatarFallback>{profile.display_name.slice(0, 2).toUpperCase()}</AvatarFallback>
+            <AvatarFallback>{(profile.display_name ?? "U").slice(0, 2).toUpperCase()}</AvatarFallback>
           </Avatar>
         </Button>
       </DropdownMenuTrigger>

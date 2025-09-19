@@ -2,7 +2,7 @@
 const nextConfig = {
   eslint: { ignoreDuringBuilds: true }, // ✅ don’t fail builds on ESLint
   // If you’re still tightening types, you can also bypass TS errors in CI:
-  // typescript: { ignoreBuildErrors: true },
+  // typescript: { ignoreBuildErrors:
   images: {
     remotePatterns: [
       { protocol: "https", hostname: "upload.wikimedia.org" },

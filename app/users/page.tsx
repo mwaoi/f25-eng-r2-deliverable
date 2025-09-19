@@ -9,7 +9,6 @@ export default async function UsersPage() {
   const {
     data: { session },
   } = await supabase.auth.getSession();
-
   if (!session) redirect("/");
 
   const { data, error } = await supabase
